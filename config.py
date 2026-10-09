@@ -114,6 +114,10 @@ SERIES = {
               "Markets' expected path of the policy rate over ~2 years."),
     "DGS10": S("10-year Treasury yield", "%", "daily", "markets", "policy",
                "The long rate: expected short rates plus a term premium."),
+    "MORTGAGE30US": S("30-year fixed mortgage rate", "%", "weekly", "markets", "credit",
+                      "Freddie Mac's weekly survey. Roughly the 10-year Treasury yield plus a spread; "
+                      "the spread reflects MBS demand, prepayment risk and the Fed's MBS holdings "
+                      "(Securitization readings, The Bubble)."),
     "BAMLH0A0HYM2": S("High-yield corporate bond spread", "% points", "daily", "markets", "credit",
                       "Extra yield on junk bonds. Blows out when credit stops being elastic."),
     "BAMLC0A0CM": S("Investment-grade corporate bond spread", "% points", "daily", "markets", "credit",

@@ -178,6 +178,8 @@ def fetch_demo():
         "NFCI": -0.5 + 3.2 * stress + walk(0.004) * 0.2,
     }
 
+    d["MORTGAGE30US"] = d["DGS10"] + 1.7 + 0.8 * stress + noise(0.03)
+
     frames = []
     for sid, vals in d.items():
         s = pd.Series(vals, index=days)

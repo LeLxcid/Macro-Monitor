@@ -368,6 +368,19 @@ with tab_mkt:
         if have("SOFR", "IORB"):
             st.markdown("**Repo funding squeeze (SOFR minus IORB)**")
             chart([((p["SOFR"] - p["IORB"]) * 100, "SOFR - IORB", C1)], "basis points", hline=0)
+    if have("MORTGAGE30US", "DGS10"):
+        a, b = st.columns(2)
+        with a:
+            st.markdown("**30-year mortgage rate vs. 10-year Treasury**")
+            chart([(nat["MORTGAGE30US"], "30-yr mortgage", C1), (nat["DGS10"], "10-yr Treasury", C2)], "%")
+        with b:
+            st.markdown("**Mortgage spread (mortgage rate minus 10-year)**")
+            m = nat["MORTGAGE30US"]
+            spread = (m - p["DGS10"].reindex(m.index, method="ffill")).dropna()  # matched to each weekly reading
+            chart([(spread, "Mortgage spread", C1)], "% points")
+            st.caption("Mortgage rates follow the 10-year yield, plus a spread for prepayment risk and how much "
+                       "investors (and the Fed) want mortgage bonds. A widening spread means mortgages are getting "
+                       "pricier even if Treasury yields don't move.")
     if have("VIXCLS"):
         st.markdown("**VIX**")
         chart([(nat["VIXCLS"], "VIX", C1)], "index", height=250)
