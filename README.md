@@ -23,6 +23,7 @@ is tagged with the core idea (and reading) it helps you watch.
 | Economy | GDP, CPI, unemployment, payrolls; leading, coincident and lagging indicators; the Sahm rule |
 | Fed & banks | The Fed's policy tools (target range, interest on reserves, discount rate, open market operations, reserve and margin requirements), its balance sheet, discount window borrowing, reserves, deposits, bank lending |
 | Markets & stress | Stress gauges, Treasury yields, the yield curve, credit spreads, the repo squeeze, VIX |
+| Forex | The 7 major pairs and the trade-weighted dollar; what's driving each pair (10-year yield gaps, US financial stress); PPP and the real dollar; and the three kinds of currency arbitrage from ECON 4810 (Feenstra/Taylor ch. 2-4): implied cross rates, covered interest parity and a carry/UIP check |
 | Explore | Any series, shown as a level, % change vs. a year ago, or change from the last reading |
 
 Gray bands on every chart are recessions. The sidebar slider sets how many years the charts show.
@@ -70,6 +71,12 @@ Run `python signals.py` to print today's readings in Terminal without opening th
   been set at the top of the fed funds range since March 2020, so it's read from that. Reserve requirements
   (0% since 2020) and the Reg T margin requirement (50% since 1974) are fixed rules, kept in `config.py`
   under `STATIC_POLICY`.
+
+- **Forex data is a daily close, published weekly.** The Fed's H.10 rates are noon quotes in New York,
+  released once a week, so the Forex tab can lag a week or more. Interest-rate gaps use monthly
+  10-year government yields because FRED's OECD 3-month rates stopped updating in early 2026. The
+  carry numbers are a direction check, not trading P&L. Triangular and covered-interest arbitrage
+  can't be detected from FRED (it has no direct cross quotes or forward rates); the tab explains why.
 
 - **A series can fail to download.** FRED occasionally renames or retires a series. `fetch.py` skips it
   and tells you which one, and the rest still update. Search for a replacement on FRED and update `config.py`.

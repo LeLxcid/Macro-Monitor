@@ -181,6 +181,19 @@ def fetch_demo():
 
     d["MORTGAGE30US"] = d["DGS10"] + 1.7 + 0.8 * stress + noise(0.03)
 
+    # Forex: random walks that react to stress the way real pairs do (yen and franc up, Aussie and kiwi down).
+    fx = lambda base, vol, stress_beta: base * np.exp(walk(vol) * 0.6 + stress_beta * stress)
+    d.update({
+        "DEXUSEU": fx(1.25, 0.004, -0.08), "DEXJPUS": fx(110, 0.004, -0.15), "DEXUSUK": fx(1.55, 0.004, -0.12),
+        "DEXCAUS": fx(1.15, 0.003, 0.10), "DEXSZUS": fx(1.0, 0.004, -0.10), "DEXUSAL": fx(0.80, 0.005, -0.25),
+        "DEXUSNZ": fx(0.70, 0.005, -0.25), "DTWEXBGS": fx(100, 0.002, 0.10), "DTWEXAFEGS": fx(100, 0.002, 0.08),
+        "RTWEXBGS": fx(100, 0.002, 0.08),
+    })
+    for sid, base in [("IRLTLT01DEM156N", 2.0), ("IRLTLT01JPM156N", 0.6), ("IRLTLT01GBM156N", 3.0),
+                      ("IRLTLT01CAM156N", 3.0), ("IRLTLT01CHM156N", 1.0), ("IRLTLT01AUM156N", 4.0),
+                      ("IRLTLT01NZM156N", 4.2)]:
+        d[sid] = base + 0.3 * policy - 0.4 + walk(0.01) * 0.3
+
     frames = []
     for sid, vals in d.items():
         s = pd.Series(vals, index=days)

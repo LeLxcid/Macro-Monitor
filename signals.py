@@ -172,6 +172,105 @@ def recessions(nat: dict) -> list:
     return [(s, e + pd.offsets.MonthEnd(0)) for s, e in zip(starts, ends)]
 
 
+# ---------- forex (ECON 4810: Feenstra/Taylor ch. 2-4) ----------
+
+
+def usd_per_ccy(nat: dict, pair: str) -> pd.Series:
+    """Price of one unit of the foreign currency in dollars (E$/foreign, 'American terms' in ch. 2),
+    whichever way the pair is quoted. Up = foreign currency stronger."""
+    m = config.FX_PAIRS[pair]
+    s = nat[m["sid"]].dropna()
+    return 1 / s if m["usd_base"] else s
+
+
+def pct_change_over(s: pd.Series, days: int) -> float:
+    """% change over the last `days` calendar days (uses the last reading on or before that date)."""
+    s = s.dropna()
+    if len(s) < 2:
+        return np.nan
+    prior = s.asof(s.index[-1] - pd.Timedelta(days=days))
+    return np.nan if pd.isna(prior) else (s.iloc[-1] / prior - 1) * 100
+
+
+def fx_monthly(nat: dict, stress: pd.Series) -> dict:
+    """{pair: monthly DataFrame} with the foreign currency's dollar price, the 10-year yield gap
+    (US minus foreign, % pts) and the stress index, all at month end."""
+    us10 = nat["DGS10"].resample("ME").mean() if "DGS10" in nat else None
+    st = stress.resample("ME").last()
+    out = {}
+    for pair, m in config.FX_PAIRS.items():
+        if m["sid"] not in nat or us10 is None:
+            continue
+        df = pd.DataFrame({"fx": usd_per_ccy(nat, pair).resample("ME").last(), "stress": st})
+        if m["yld"] in nat:
+            df["gap"] = us10 - nat[m["yld"]].resample("ME").mean()
+        out[pair] = df.dropna(subset=["fx"])
+    return out
+
+
+def carry_returns(df: pd.DataFrame) -> pd.Series:
+    """12-month return of a carry trade: long the higher-yielding currency, funded in the lower one.
+    Uncovered interest parity (ch. 2 and 4) says this should average ZERO, because the high-yield
+    currency should depreciate by the rate gap. Return = |gap| earned + the move in the currency held.
+    Uses 10-year yields as the rate (a proxy) and ignores bond price changes and trading costs."""
+    if "gap" not in df:
+        return pd.Series(dtype=float)
+    gap0 = df["gap"].shift(12)                     # US minus foreign, set when the trade starts
+    ccy_move = (df["fx"] / df["fx"].shift(12) - 1) * 100   # + = foreign currency appreciated vs USD
+    long_usd = gap0 > 0
+    ret = np.where(long_usd, gap0 - ccy_move, -gap0 + ccy_move)
+    return pd.Series(ret, index=df.index).where(gap0.notna() & ccy_move.notna()).dropna()
+
+
+def fx_table(nat: dict, monthly: dict) -> pd.DataFrame:
+    """One row per major pair: recent moves, the rate gap, how the pair has moved with the gap and
+    with financial stress, and the carry (UIP) check."""
+    rows = []
+    five_years = pd.DateOffset(years=5)
+    for pair, m in config.FX_PAIRS.items():
+        if pair not in monthly:
+            continue
+        s = nat[m["sid"]].dropna()
+        df = monthly[pair]
+        recent = df[df.index >= df.index.max() - five_years]
+        d = recent.diff()
+        ccy_ret = recent["fx"].pct_change() * 100
+        row = {"Pair": pair, "Latest": s.iloc[-1], "As of": s.index[-1],
+               "1-month %": pct_change_over(s, 30), "1-year %": pct_change_over(s, 365)}
+        if "gap" in df and df["gap"].notna().any():
+            g = df["gap"].dropna()
+            row["US minus foreign 10y"] = g.iloc[-1]
+            row["Gap change, 6 mo"] = g.iloc[-1] - g.asof(g.index[-1] - pd.DateOffset(months=6))
+            row["Corr with gap"] = ccy_ret.corr(-d["gap"])      # + = currency rises when ITS yields rise vs the US
+        row["Corr with stress"] = ccy_ret.corr(d["stress"])     # - = currency falls when US stress rises
+        cr = carry_returns(df)
+        if len(cr):
+            row["Carry: long"] = "USD" if df["gap"].dropna().iloc[-1] > 0 else m["ccy"]
+            row["Carry, last 12 mo %"] = cr.iloc[-1]
+            row["Carry, avg 12 mo %"] = cr.mean()
+            row["Carry, % of years won"] = (cr > 0).mean() * 100
+        rows.append(row)
+    return pd.DataFrame(rows).set_index("Pair") if rows else pd.DataFrame()
+
+
+def fx_crosses(nat: dict) -> pd.DataFrame:
+    """Cross rates implied through the dollar (the vehicle-currency logic and triangular
+    no-arbitrage condition from ch. 2): E(B per A) = E($ per A) / E($ per B)."""
+    usd = {m["ccy"]: usd_per_ccy(nat, p) for p, m in config.FX_PAIRS.items() if m["sid"] in nat}
+    usd["USD"] = None
+    rows = []
+    for name in config.FX_CROSSES:
+        a, b = name.split("/")
+        if a not in usd or b not in usd or usd[a] is None or usd[b] is None:
+            continue
+        x = (usd[a] / usd[b]).dropna()
+        if x.empty:
+            continue
+        rows.append({"Cross": name, "Implied rate": x.iloc[-1], "As of": x.index[-1],
+                     "1-month %": pct_change_over(x, 30), "1-year %": pct_change_over(x, 365)})
+    return pd.DataFrame(rows).set_index("Cross") if rows else pd.DataFrame()
+
+
 # ---------- flags ----------
 
 
@@ -238,6 +337,22 @@ def regime_flags(p, nat, idx, lead) -> list:
     if idx.notna().any():
         v = idx.dropna().iloc[-1]
         add("Financial stress high", "markets", bool(v > 1), f"Stress index {v:+.2f} (above +1 = stressed)")
+
+    # --- Forex ---
+    if "DTWEXBGS" in nat:
+        chg = pct_change_over(nat["DTWEXBGS"], 91)
+        if not np.isnan(chg):
+            add("Dollar surging", "fx", bool(chg > 3), f"Broad dollar {chg:+.1f}% over 3 months (signal above +3%)")
+    if "DEXJPUS" in nat and "DEXSZUS" in nat:
+        jpy, chf = pct_change_over(nat["DEXJPUS"], 30), pct_change_over(nat["DEXSZUS"], 30)
+        if not (np.isnan(jpy) or np.isnan(chf)):
+            add("Safe-haven bid (yen & franc rallying)", "fx", bool(jpy < -2 and chf < -2),
+                f"USD/JPY {jpy:+.1f}%, USD/CHF {chf:+.1f}% over 1 month (signal: both below -2%)")
+    if "RTWEXBGS" in nat and history_years(nat["RTWEXBGS"]) >= config.MIN_HISTORY_YEARS:
+        r = nat["RTWEXBGS"].dropna()
+        gap = (r.iloc[-1] / r.mean() - 1) * 100
+        add("Dollar far from PPP (real terms)", "fx", bool(abs(gap) > 10),
+            f"Real dollar {gap:+.1f}% vs. its {r.index[0]:%Y}-{r.index[-1]:%Y} average (signal beyond ±10%)")
     return flags
 
 
@@ -249,8 +364,10 @@ def build(raw: pd.DataFrame) -> dict:
     idx = stress_index(g)
     lc = leading_components(p)
     lead = leading_index(lc)
+    fxm = fx_monthly(nat, idx)
     return dict(nat=nat, panel=p, gauges=g, stress=idx, lead_parts=lc, lead=lead,
-                recessions=recessions(nat), flags=regime_flags(p, nat, idx, lead))
+                recessions=recessions(nat), flags=regime_flags(p, nat, idx, lead),
+                fx_monthly=fxm, fx_table=fx_table(nat, fxm), fx_crosses=fx_crosses(nat))
 
 
 if __name__ == "__main__":

@@ -26,9 +26,10 @@ IDEAS = {
     "credit": "Securitization, shadow banking & credit conditions",
     "policy": "Policy & the price of credit",
     "cycle": "The business cycle",
+    "fx": "Exchange rates: asset approach, PPP & arbitrage (ECON 4810, Feenstra/Taylor ch. 2-4)",
 }
 
-SECTIONS = {"economy": "Economy", "fed": "Fed & banks", "markets": "Markets & stress"}
+SECTIONS = {"economy": "Economy", "fed": "Fed & banks", "markets": "Markets & stress", "fx": "Forex"}
 CYCLES = {"big": "Big picture", "leading": "Leading", "coincident": "Coincident", "lagging": "Lagging"}
 
 
@@ -131,7 +132,56 @@ SERIES = {
                 "The market's fear gauge. Rises with fire-sale dynamics."),
     "NFCI": S("Chicago Fed financial conditions index", "index", "weekly", "markets", "credit",
               "An outside benchmark for your stress index. Above 0 = tighter than average."),
+
+    # ===================== FOREX =====================
+    # Major pairs: Fed H.10 noon buying rates in New York. FRED's quotes already match
+    # market convention (EUR/USD = dollars per euro, USD/JPY = yen per dollar, etc.).
+    "DEXUSEU": S("EUR/USD", "US$ per euro", "daily", "fx", "fx", "Euro vs. dollar. Up = euro stronger, dollar weaker."),
+    "DEXJPUS": S("USD/JPY", "yen per US$", "daily", "fx", "fx",
+                 "Dollar vs. yen. Up = dollar stronger. The yen tends to rally in risk-off episodes."),
+    "DEXUSUK": S("GBP/USD", "US$ per pound", "daily", "fx", "fx", "Pound vs. dollar. Up = pound stronger."),
+    "DEXCAUS": S("USD/CAD", "Canadian $ per US$", "daily", "fx", "fx",
+                 "Dollar vs. Canadian dollar. Up = US dollar stronger. CAD moves with oil."),
+    "DEXSZUS": S("USD/CHF", "Swiss francs per US$", "daily", "fx", "fx",
+                 "Dollar vs. Swiss franc. Up = dollar stronger. The franc is the other classic safe haven."),
+    "DEXUSAL": S("AUD/USD", "US$ per Australian $", "daily", "fx", "fx",
+                 "Aussie vs. dollar. Up = Aussie stronger. A 'risk-on' currency tied to commodities and China."),
+    "DEXUSNZ": S("NZD/USD", "US$ per NZ $", "daily", "fx", "fx", "Kiwi vs. dollar. Up = kiwi stronger. Risk-on, like the Aussie."),
+    # Effective (trade-weighted) exchange rates: the multilateral rate from ch. 2.
+    "DTWEXBGS": S("Broad dollar index (nominal)", "index, Jan 2006 = 100", "daily", "fx", "fx",
+                  "The dollar against a trade-weighted basket of 26 currencies (the 'effective exchange rate', ch. 2). Up = dollar stronger."),
+    "DTWEXAFEGS": S("Dollar vs. advanced economies", "index, Jan 2006 = 100", "daily", "fx", "fx",
+                    "Trade-weighted dollar against the euro, yen, pound, Canadian and Aussie dollars, franc and krona."),
+    "RTWEXBGS": S("Real broad dollar index", "index, Jan 2006 = 100", "monthly", "fx", "fx",
+                  "The broad dollar adjusted for inflation at home and abroad: the real exchange rate from ch. 3. "
+                  "If PPP held in the long run it would hover around a constant."),
+    # Foreign 10-year government yields (OECD, monthly), for the interest-rate gaps in the asset
+    # approach (ch. 4). Short-term rates would be the textbook choice, but FRED's OECD 3-month
+    # series stopped updating in early 2026, so these are a proxy.
+    "IRLTLT01DEM156N": S("Germany 10-year yield (euro proxy)", "%", "monthly", "fx", "fx", "Benchmark euro-area long rate."),
+    "IRLTLT01JPM156N": S("Japan 10-year yield", "%", "monthly", "fx", "fx", "Japanese government bond yield."),
+    "IRLTLT01GBM156N": S("UK 10-year yield", "%", "monthly", "fx", "fx", "UK gilt yield."),
+    "IRLTLT01CAM156N": S("Canada 10-year yield", "%", "monthly", "fx", "fx", "Canadian government bond yield."),
+    "IRLTLT01CHM156N": S("Switzerland 10-year yield", "%", "monthly", "fx", "fx", "Swiss government bond yield."),
+    "IRLTLT01AUM156N": S("Australia 10-year yield", "%", "monthly", "fx", "fx", "Australian government bond yield."),
+    "IRLTLT01NZM156N": S("New Zealand 10-year yield", "%", "monthly", "fx", "fx", "New Zealand government bond yield."),
 }
+
+# How each major pair is quoted and which foreign yield it's compared with.
+# usd_base=True means USD is the first currency (USD/JPY): the pair rising = dollar stronger.
+FX_PAIRS = {
+    "EUR/USD": dict(sid="DEXUSEU", ccy="EUR", usd_base=False, yld="IRLTLT01DEM156N"),
+    "USD/JPY": dict(sid="DEXJPUS", ccy="JPY", usd_base=True, yld="IRLTLT01JPM156N"),
+    "GBP/USD": dict(sid="DEXUSUK", ccy="GBP", usd_base=False, yld="IRLTLT01GBM156N"),
+    "USD/CAD": dict(sid="DEXCAUS", ccy="CAD", usd_base=True, yld="IRLTLT01CAM156N"),
+    "USD/CHF": dict(sid="DEXSZUS", ccy="CHF", usd_base=True, yld="IRLTLT01CHM156N"),
+    "AUD/USD": dict(sid="DEXUSAL", ccy="AUD", usd_base=False, yld="IRLTLT01AUM156N"),
+    "NZD/USD": dict(sid="DEXUSNZ", ccy="NZD", usd_base=False, yld="IRLTLT01NZM156N"),
+}
+
+# Cross rates built through the dollar as the vehicle currency (ch. 2), quoted as
+# "units of the second currency per one unit of the first".
+FX_CROSSES = ["EUR/GBP", "EUR/JPY", "GBP/JPY", "EUR/CHF", "AUD/JPY", "CAD/JPY", "AUD/NZD"]
 
 # Rules the Fed sets that don't change often enough to need a data feed.
 # Check federalreserve.gov if you're reading this long after October 2026.

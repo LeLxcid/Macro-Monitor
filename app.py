@@ -202,8 +202,8 @@ if meta.get("demo"):
     st.error("DEMO DATA: these numbers are made up so you can try the app. "
              "Run `python fetch.py` with a FRED key for real data.", icon="⚠️")
 
-tab_over, tab_econ, tab_fed, tab_mkt, tab_exp = st.tabs(
-    ["Overview", "Economy", "Fed & banks", "Markets & stress", "Explore"])
+tab_over, tab_econ, tab_fed, tab_mkt, tab_fx, tab_exp = st.tabs(
+    ["Overview", "Economy", "Fed & banks", "Markets & stress", "Forex", "Explore"])
 
 # =====================================================================
 with tab_over:
@@ -396,6 +396,151 @@ with tab_mkt:
     if have("VIXCLS"):
         st.markdown("**VIX**")
         chart([(nat["VIXCLS"], "VIX", C1)], "index", height=250)
+
+# =====================================================================
+with tab_fx:
+    st.caption("The major pairs, what's been driving them, and what the ECON 4810 theories (Feenstra/Taylor "
+               "ch. 2-4) say to look for. Rates are the Fed's daily noon quotes in New York, published weekly, "
+               "so this is a daily-close view, not a live one.")
+    pairs = [p for p, m in config.FX_PAIRS.items() if have(m["sid"])]
+    if not pairs:
+        st.info("No forex data yet. Click **Update data now** in the sidebar to download it.")
+    else:
+        # ---- latest quotes ----
+        cols = st.columns(len(pairs) + (1 if have("DTWEXBGS") else 0))
+        for i, pair in enumerate(pairs):
+            s = nat[config.FX_PAIRS[pair]["sid"]].dropna()
+            dec = 2 if s.iloc[-1] > 20 else 4
+            cols[i].metric(pair, f"{s.iloc[-1]:.{dec}f}", f"{signals.pct_change_over(s, 30):+.1f}% 1 mo",
+                           delta_color="off", help=f"As of {s.index[-1]:%b %d, %Y}")
+        if have("DTWEXBGS"):
+            d = nat["DTWEXBGS"].dropna()
+            cols[-1].metric("Broad dollar", f"{d.iloc[-1]:.1f}", f"{signals.pct_change_over(d, 30):+.1f}% 1 mo",
+                            delta_color="off", help=f"Trade-weighted, as of {d.index[-1]:%b %d, %Y}")
+
+        # ---- 1) asset approach ----
+        st.markdown("#### What's moving the majors (asset approach, ch. 4)")
+        st.caption("Uncovered interest parity says a currency strengthens when its interest rates rise relative to "
+                   "the other country's. The table checks that, and how each currency behaves when US financial "
+                   "stress rises. Correlations use monthly changes over the last 5 years.")
+        T = B["fx_table"]
+        if not T.empty:
+            show = T.drop(columns=[c for c in T.columns if c.startswith("Carry")]).copy()
+            show["As of"] = pd.to_datetime(show["As of"]).dt.strftime("%b %d")
+            st.dataframe(show, width="stretch", column_config={
+                "Latest": st.column_config.NumberColumn(format="%.4f"),
+                "1-month %": st.column_config.NumberColumn(format="%+.1f"),
+                "1-year %": st.column_config.NumberColumn(format="%+.1f"),
+                "US minus foreign 10y": st.column_config.NumberColumn(
+                    format="%+.2f", help="US 10-year yield minus the foreign one, % points. Positive = dollar pays more."),
+                "Gap change, 6 mo": st.column_config.NumberColumn(format="%+.2f"),
+                "Corr with gap": st.column_config.NumberColumn(
+                    format="%+.2f", help="How the foreign currency moved with ITS yields rising vs. US yields. "
+                                         "Positive = moves the way UIP predicts."),
+                "Corr with stress": st.column_config.NumberColumn(
+                    format="%+.2f", help="How the foreign currency moved when your US stress index rose. "
+                                         "Positive = safe haven (yen, franc); negative = risk-on (Aussie, kiwi)."),
+            })
+            havens = [p for p in T.index if T.loc[p].get("Corr with stress", 0) > 0.1]
+            risky = [p for p in T.index if T.loc[p].get("Corr with stress", 0) < -0.1]
+            if havens or risky:
+                st.caption(f"Acting as safe havens lately: **{', '.join(havens) or 'none'}**. "
+                           f"Selling off with stress: **{', '.join(risky) or 'none'}**.")
+
+        pick = st.selectbox("Look at one pair", pairs, key="fx_pick")
+        pm = config.FX_PAIRS[pick]
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown(f"**{pick}**  \n:gray[{config.SERIES[pm['sid']]['units']}]")
+            chart([(nat[pm["sid"]], pick, C1)], config.SERIES[pm["sid"]]["units"], height=260)
+        with c2:
+            df = B["fx_monthly"].get(pick)
+            if df is not None and "gap" in df:
+                st.markdown(f"**10-year yield gap: US minus {pm['ccy']}**  \n:gray[% points, monthly]")
+                chart([(df["gap"], "US minus foreign", C2)], "% points", height=260, hline=0)
+        st.caption(("A rising gap favors the dollar, so under UIP " + pick + (" should rise." if pm["usd_base"] else " should fall."))
+                   + " Shown as two charts on purpose: a pair and a rate gap on one chart with two axes is easy to misread.")
+
+        # ---- 2) the dollar and risk ----
+        st.markdown("#### The dollar and financial stress")
+        c1, c2 = st.columns(2)
+        with c1:
+            tr = [(nat[s], n, c) for s, n, c in [("DTWEXBGS", "Broad dollar", C1), ("DTWEXAFEGS", "vs. advanced economies", C2)] if have(s)]
+            if tr:
+                st.markdown("**Trade-weighted dollar** (the effective exchange rate, ch. 2)")
+                chart(tr, "index", height=260)
+        with c2:
+            st.markdown("**Your stress index**")
+            chart([(B["stress"], "Stress index", C1)], "std. deviations from normal", height=260, hline=1, hline_label="stressed")
+        st.caption("The dollar usually rises when global stress spikes (2008, March 2020) because the world borrows "
+                   "in dollars and scrambles for them: the hierarchy of money from your Money & Credit readings.")
+
+        # ---- 3) PPP ----
+        if have("RTWEXBGS"):
+            st.markdown("#### The long run: PPP and the real dollar (ch. 3)")
+            r = nat["RTWEXBGS"].dropna()
+            gap = (r.iloc[-1] / r.mean() - 1) * 100
+            c1, c2 = st.columns([1, 2])
+            with c1:
+                st.metric("Real dollar vs. its average", f"{gap:+.1f}%", help=f"Average since {r.index[0]:%Y}: {r.mean():.1f}")
+                st.caption("The real exchange rate adjusts for inflation in the US and abroad. If relative PPP held, "
+                           "it would stay near its average, so a large gap says the dollar is expensive (above) or "
+                           "cheap (below) in real terms. PPP deviations are slow to fade: the textbook half-life is "
+                           "3-5 years, so this is a long-run lean, not a timing signal.")
+            with c2:
+                chart([(r, "Real broad dollar", C1)], "index", height=260, hline=r.mean(), hline_label="long-run average")
+
+        # ---- 4) arbitrage ----
+        st.markdown("#### Arbitrage opportunities (ch. 2)")
+        st.caption("Ch. 2 covers three kinds of currency arbitrage. Here's what each looks like right now, and "
+                   "honestly, how much of it a dashboard on daily data can find.")
+        a1, a2, a3 = st.tabs(["Triangular (cross rates)", "Covered interest parity", "Uncovered interest parity: carry"])
+        with a1:
+            X = B["fx_crosses"]
+            if not X.empty:
+                xs = X.copy()
+                xs["As of"] = pd.to_datetime(xs["As of"]).dt.strftime("%b %d")
+                st.dataframe(xs, width="stretch", column_config={
+                    "Implied rate": st.column_config.NumberColumn(format="%.4f"),
+                    "1-month %": st.column_config.NumberColumn(format="%+.1f"),
+                    "1-year %": st.column_config.NumberColumn(format="%+.1f")})
+            st.markdown(
+                "These cross rates are built through the dollar as the **vehicle currency**: "
+                "E(¥/€) = E(¥/$) × E($/€). Triangular arbitrage is the bet that a bank's *direct* quote for a "
+                "cross differs from this implied rate. In real markets that gap is closed by bank algorithms in "
+                "milliseconds and is smaller than the bid-ask spread, so you'd need live quotes from two venues "
+                "and very low costs to see one. FRED has no independent cross quotes, so this table can't show "
+                "triangular arbitrage. Use it as a fair-value reference for crosses.")
+        with a2:
+            st.markdown(
+                "**Riskless arbitrage.** Covered interest parity says the forward premium equals the interest gap: "
+                "F/E = (1 + i$)/(1 + i*). Testing it needs forward rates, which aren't on FRED. The evidence "
+                "slide in ch. 2 shows gaps closing once capital controls ended. Since 2008 a small, persistent "
+                "deviation (the 'cross-currency basis') has reappeared, but only large banks with cheap balance "
+                "sheets can trade it. It isn't an opportunity for an individual account.")
+        with a3:
+            if not T.empty and "Carry: long" in T:
+                cs = T[["US minus foreign 10y", "Carry: long", "Carry, last 12 mo %", "Carry, avg 12 mo %",
+                        "Carry, % of years won"]].copy()
+                cs["Rate edge (% pts)"] = cs["US minus foreign 10y"].abs()
+                cs = cs.drop(columns="US minus foreign 10y").sort_values("Rate edge (% pts)", ascending=False)
+                st.dataframe(cs[["Carry: long", "Rate edge (% pts)", "Carry, last 12 mo %", "Carry, avg 12 mo %",
+                                 "Carry, % of years won"]], width="stretch", column_config={
+                    "Rate edge (% pts)": st.column_config.NumberColumn(format="%.2f"),
+                    "Carry, last 12 mo %": st.column_config.NumberColumn(format="%+.1f"),
+                    "Carry, avg 12 mo %": st.column_config.NumberColumn(
+                        format="%+.1f", help="Average of every rolling 12-month carry return in the data. UIP says ~0."),
+                    "Carry, % of years won": st.column_config.NumberColumn(format="%.0f%%")})
+            st.markdown(
+                "**Risky arbitrage.** UIP says the higher-yielding currency should *depreciate* by the rate gap, "
+                "so borrowing in the low-rate currency to hold the high-rate one should earn nothing on average. "
+                "In practice it often earns something (the 'forward premium puzzle'), but it loses suddenly when "
+                "stress spikes, because funding currencies like the yen and franc are safe havens. Compare the "
+                "carry columns with *Corr with stress* above. A positive average here is a risk premium, "
+                "not free money.")
+            st.caption("Uses 10-year government yields as the interest rate (FRED's short-rate series for these "
+                       "countries stopped updating). That ignores bond price changes and trading costs, so treat the "
+                       "numbers as direction, not P&L. A real test belongs in QuantConnect with short rates and forwards.")
 
 # =====================================================================
 with tab_exp:

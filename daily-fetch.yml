@@ -1,0 +1,40 @@
+# Optional: refresh the data every weekday morning and save it in the repo, so the
+# hosted app starts with fresh data instead of re-downloading everything after a restart.
+#
+# To turn it on:
+#   1. Move this file to .github/workflows/daily-fetch.yml
+#   2. On GitHub: repo -> Settings -> Secrets and variables -> Actions -> New repository secret
+#      Name: FRED_API_KEY   Value: your key
+#   3. Repo -> Settings -> Actions -> General -> Workflow permissions -> "Read and write permissions"
+# You can run it by hand from the Actions tab ("Run workflow").
+
+name: Daily FRED fetch
+
+on:
+  schedule:
+    - cron: "17 13 * * 1-5"   # 13:17 UTC = 8:17am Eastern (9:17am during daylight saving)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python fetch.py
+        env:
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+      - name: Commit the new data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898729+github-actions[bot]@users.noreply.github.com"
+          git add data/
+          git diff --cached --quiet || git commit -m "Daily FRED data update"
+          git push
