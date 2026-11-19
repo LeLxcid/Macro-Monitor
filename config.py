@@ -119,9 +119,14 @@ SERIES = {
                       "the spread reflects MBS demand, prepayment risk and the Fed's MBS holdings "
                       "(Securitization readings, The Bubble)."),
     "BAMLH0A0HYM2": S("High-yield corporate bond spread", "% points", "daily", "markets", "credit",
-                      "Extra yield on junk bonds. Blows out when credit stops being elastic."),
+                      "Extra yield on junk bonds. Blows out when credit stops being elastic. "
+                      "FRED only provides the last 3 years (ICE licensing), so it's charted but not ranked."),
     "BAMLC0A0CM": S("Investment-grade corporate bond spread", "% points", "daily", "markets", "credit",
-                    "Same idea for safer companies, including heavy buyback borrowers."),
+                    "Same idea for safer companies, including heavy buyback borrowers. "
+                    "FRED only provides the last 3 years (ICE licensing), so it's charted but not ranked."),
+    "BAA10Y": S("Baa corporate bond spread (Moody's)", "% points", "daily", "markets", "credit",
+                "Yield on Baa-rated (lowest investment-grade) bonds minus the 10-year Treasury. History back "
+                "to 1986, so it's the spread the stress index and the credit flag are judged on."),
     "VIXCLS": S("VIX (stock market volatility)", "index", "daily", "markets", "credit",
                 "The market's fear gauge. Rises with fire-sale dynamics."),
     "NFCI": S("Chicago Fed financial conditions index", "index", "weekly", "markets", "credit",
@@ -141,6 +146,11 @@ STATIC_POLICY = {
 # How far back to pull history. 2000 gives the z-scores plenty of "normal" history
 # before the 2008 crisis. (Some series, like SOFR, start much later; that's fine.)
 START_DATE = "2000-01-01"
+
+# A series needs at least this many years of history before the app will rank it
+# ("89th percentile") or turn it into a stress gauge. Ranking 3 years of data against
+# itself makes ordinary readings look extreme.
+MIN_HISTORY_YEARS = 10
 
 DATA_DIR = "data"
 RAW_FILE = "data/raw.parquet"

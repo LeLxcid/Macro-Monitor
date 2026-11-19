@@ -189,7 +189,12 @@ def last(sid):
 # ---------- header ----------
 
 st.title("Macro Monitor")
-st.caption(f"Data through **{p.index.max():%b %d, %Y}** · {len(nat)} series from FRED")
+# Newest DAILY observation, capped at today: some weekly series are stamped with a date at
+# the end of their week, which made the header show a date in the future.
+_today = pd.Timestamp.today().normalize()
+_daily = [nat[s].dropna().index.max() for s, m in config.SERIES.items() if m["freq"] == "daily" and have(s)]
+_through = min(max(_daily), _today) if _daily else min(p.index.max(), _today)
+st.caption(f"Daily data through **{_through:%b %d, %Y}** · {len(nat)} series from FRED")
 if meta.get("demo"):
     st.error("DEMO DATA: these numbers are made up so you can try the app. "
              "Run `python fetch.py` with a FRED key for real data.", icon="⚠️")
@@ -361,9 +366,13 @@ with tab_mkt:
             chart([(p["CURVE"], "10y - 2y", C1)], "% points", hline=0, hline_label="inverted below")
     a, b = st.columns(2)
     with a:
-        if have("BAMLH0A0HYM2", "BAMLC0A0CM"):
+        tr = [(nat[s], n, c) for s, n, c in [("BAMLH0A0HYM2", "High-yield", C1), ("BAMLC0A0CM", "Investment-grade", C2),
+                                              ("BAA10Y", "Baa (Moody's)", C3)] if have(s)]
+        if tr:
             st.markdown("**Corporate bond spreads**")
-            chart([(nat["BAMLH0A0HYM2"], "High-yield", C1), (nat["BAMLC0A0CM"], "Investment-grade", C2)], "% points")
+            chart(tr, "% points")
+            st.caption("FRED only provides 3 years of the high-yield and investment-grade spreads, so the "
+                       "stress index and credit flag use the Baa spread, which goes back to 1986.")
     with b:
         if have("SOFR", "IORB"):
             st.markdown("**Repo funding squeeze (SOFR minus IORB)**")
@@ -418,7 +427,13 @@ with tab_exp:
             return
         q1, q2, q3 = st.columns(3)
         q1.metric("Latest", fmt(s.iloc[-1]), f"{s.iloc[-1] - s.iloc[0]:+,.2f} over range", delta_color="off")
-        q2.metric("Percentile of full history", signals.ordinal(signals.percentile_rank(signals.transform(nat[sid], view))))
+        yrs = signals.history_years(nat[sid])
+        if yrs >= config.MIN_HISTORY_YEARS:
+            q2.metric("Percentile of full history", signals.ordinal(signals.percentile_rank(signals.transform(nat[sid], view))),
+                      help=f"Ranked against {yrs:.0f} years of data")
+        else:
+            q2.metric("Percentile of full history", "n/a",
+                      help=f"Only {yrs:.1f} years of history on FRED, too short to rank fairly")
         q3.metric("Range high / low", f"{fmt(s.max())} / {fmt(s.min())}")
         fig = go.Figure(go.Scatter(x=s.index, y=s.values, line=dict(color=color, width=2), name=m["name"],
                                    hovertemplate="%{x|%b %d, %Y}<br>%{y:,.2f}<extra></extra>"))

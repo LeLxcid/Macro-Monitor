@@ -173,6 +173,7 @@ def fetch_demo():
         "DGS10": 2.8 + policy * 0.35 + walk(0.012) * 0.3,
         "BAMLH0A0HYM2": 3.8 + 14 * stress + np.abs(walk(0.02)) * 0.3,
         "BAMLC0A0CM": 1.2 + 4.5 * stress + np.abs(walk(0.006)) * 0.2,
+        "BAA10Y": 1.9 + 3.5 * stress + np.abs(walk(0.005)) * 0.2,
         "VIXCLS": 15 + 55 * stress + np.abs(noise(2)),
         "SOFR": policy - 0.05 + 0.6 * bump("2019-09-17", 2, 1.0) + noise(0.01),
         "NFCI": -0.5 + 3.2 * stress + walk(0.004) * 0.2,
@@ -192,6 +193,8 @@ def fetch_demo():
             s = s.resample("QS").first()
         if sid in ("SOFR", "IORB", "RRPONTSYD"):
             s = s[s.index >= "2018-04-01"]  # these series only exist from ~2018/2021
+        if sid in ("BAMLH0A0HYM2", "BAMLC0A0CM"):
+            s = s[s.index >= today - pd.DateOffset(years=3)]  # FRED only provides 3 years of ICE data
         if sid == "SP500":
             s = s[s.index >= today - pd.DateOffset(years=10)]  # FRED only provides 10 years
         s = s[s.index <= today]

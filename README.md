@@ -74,8 +74,11 @@ Run `python signals.py` to print today's readings in Terminal without opening th
 - **A series can fail to download.** FRED occasionally renames or retires a series. `fetch.py` skips it
   and tells you which one, and the rest still update. Search for a replacement on FRED and update `config.py`.
 - **Short histories.** SOFR starts in 2018 and IORB in 2021, so the funding-squeeze gauge has less
-  history than the others. If the high-yield spread series comes back with only a few years of data,
-  that's a licensing limit on FRED's side, not a bug.
+  history than the others. FRED only provides the last 3 years of the ICE high-yield and
+  investment-grade spreads (a licensing limit), so they're charted but not ranked or used in the
+  stress index: ranking 3 years against itself made a tight spread look like the 89th percentile.
+  The credit gauge and flag use Moody's Baa spread (`BAA10Y`, back to 1986) instead. Any series with
+  less than `MIN_HISTORY_YEARS` (10, in `config.py`) shows "n/a" for its percentile in Explore.
 - **Look-ahead bias.** The stress gauges compare each day only to the history before it, so they're safe
   to backtest. Weekly and quarterly data are treated as known on their observation date, though they're
   published later. Add a lag before trusting a backtest, and use ALFRED (FRED's archive of

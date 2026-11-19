@@ -77,12 +77,27 @@ def expanding_z(s: pd.Series, min_periods: int = 252) -> pd.Series:
     return (s - mean) / std
 
 
+def history_years(s: pd.Series) -> float:
+    """How many years of actual observations a series has."""
+    s = s.dropna()
+    return 0.0 if s.empty else (s.index[-1] - s.index[0]).days / 365.25
+
+
+def long_enough(p: pd.DataFrame, sid: str) -> bool:
+    return sid in p and history_years(p[sid]) >= config.MIN_HISTORY_YEARS
+
+
 def gauges(p: pd.DataFrame) -> pd.DataFrame:
-    """Financial stress gauges. Each is oriented so HIGHER = MORE STRESS."""
+    """Financial stress gauges. Each is oriented so HIGHER = MORE STRESS.
+    Spread gauges are only built from series with enough history (config.MIN_HISTORY_YEARS):
+    FRED cut the ICE high-yield and investment-grade spreads to 3 years, so for now the
+    credit gauge is Moody's Baa spread. If FRED restores the ICE history, those come back on."""
     g = pd.DataFrame(index=p.index)
-    if "BAMLH0A0HYM2" in p:
+    if long_enough(p, "BAA10Y"):
+        g["Corporate spread (Baa)"] = expanding_z(p["BAA10Y"])
+    if long_enough(p, "BAMLH0A0HYM2"):
         g["High-yield spread"] = expanding_z(p["BAMLH0A0HYM2"])
-    if "BAMLC0A0CM" in p:
+    if long_enough(p, "BAMLC0A0CM"):
         g["Investment-grade spread"] = expanding_z(p["BAMLC0A0CM"])
     if "VIXCLS" in p:
         g["Stock volatility (VIX)"] = expanding_z(p["VIXCLS"])
@@ -131,8 +146,9 @@ def sahm(unrate: pd.Series) -> pd.Series:
 
 
 def ordinal(n: float) -> str:
-    """73 -> '73rd'."""
-    n = int(round(n))
+    """73.8 -> '73rd'. Rounds DOWN, so a reading shown as '90th' really is at or above 90
+    (rounding up made an 89.6 show as '90th' next to a 'No' on a 90th-percentile flag)."""
+    n = int(np.floor(n))
     suffix = "th" if 10 <= n % 100 <= 20 else {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
     return f"{n}{suffix}"
 
@@ -191,7 +207,9 @@ def regime_flags(p, nat, idx, lead) -> list:
     if "WALCL" in nat and len(nat["WALCL"]) > 14:
         w = nat["WALCL"]
         chg = w.iloc[-1] / w.iloc[-14] - 1
-        add("Fed balance sheet shrinking", "fed", bool(chg < 0), f"{chg*100:+.1f}% over 13 weeks")
+        # Week-to-week noise moves it by a few hundredths of a percent, so "shrinking" means
+        # down more than 0.5% over 13 weeks (QT ran at roughly 1-2% a quarter).
+        add("Fed balance sheet shrinking", "fed", bool(chg < -0.005), f"{chg*100:+.2f}% over 13 weeks (signal below -0.50%)")
     if "WLCFLPCL" in nat:
         pct = percentile_rank(nat["WLCFLPCL"])
         add("Banks leaning on discount window", "fed", bool(pct >= 90),
@@ -208,9 +226,15 @@ def regime_flags(p, nat, idx, lead) -> list:
     if {"SOFR", "IORB"} <= set(p.columns) and p[["SOFR", "IORB"]].dropna().shape[0]:
         avg = (p["SOFR"] - p["IORB"]).dropna().tail(5).mean() * 100
         add("Repo funding squeeze", "markets", bool(avg > 5), f"SOFR - IORB = {avg:+.0f} bp (5-day avg; signal above +5)")
-    if "BAMLH0A0HYM2" in nat:
-        pct = percentile_rank(nat["BAMLH0A0HYM2"])
-        add("Credit spreads elevated", "markets", bool(pct >= 80), f"HY spread at {ordinal(pct)} percentile of history")
+    # Judged on whichever spread has enough history to rank fairly (see gauges()).
+    credit = next((sid for sid in ("BAMLH0A0HYM2", "BAA10Y")
+                   if sid in nat and history_years(nat[sid]) >= config.MIN_HISTORY_YEARS), None)
+    if credit:
+        s = nat[credit].dropna()
+        pct = percentile_rank(s)
+        label = "HY spread" if credit == "BAMLH0A0HYM2" else "Baa spread"
+        add("Credit spreads elevated", "markets", bool(pct >= 80),
+            f"{label} {s.iloc[-1]:.2f} pts, {ordinal(pct)} percentile since {s.index[0]:%Y}")
     if idx.notna().any():
         v = idx.dropna().iloc[-1]
         add("Financial stress high", "markets", bool(v > 1), f"Stress index {v:+.2f} (above +1 = stressed)")
