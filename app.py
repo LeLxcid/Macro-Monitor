@@ -53,7 +53,7 @@ def maybe_refresh():
         try:
             fetch.fetch_real()
             return "updated"
-        except BaseException as e:  # includes the SystemExit fetch raises when there's no key
+        except (Exception, SystemExit) as e:  # SystemExit is what fetch raises when there's no key
             return f"error: {e}"
     return None
 
@@ -80,13 +80,16 @@ with st.sidebar:
         st.caption(f"Last fetched: {meta['updated_utc'].replace('T', ' ')[:16]} UTC")
     if fetch.get_api_key():
         if st.button("Update data now", width="stretch"):
+            ok = False
             with st.spinner("Pulling from FRED..."):
                 try:
                     fetch.fetch_real()
-                    st.cache_data.clear()
-                    st.rerun()
-                except BaseException as e:
-                    st.error(f"Update failed: {e}")
+                    ok = True
+                except (Exception, SystemExit) as e:  # SystemExit = no key; NOT BaseException,
+                    st.error(f"Update failed: {e}")    # which also swallows Streamlit's rerun signal
+            if ok:  # st.rerun() works by raising an exception, so it must stay outside the try
+                st.cache_data.clear()
+                st.rerun()
     else:
         st.info("No FRED key found. Add one to a `.env` file (see README) to get real, auto-updating data.")
     if refresh_status and refresh_status.startswith("error"):
