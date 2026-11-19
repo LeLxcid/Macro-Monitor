@@ -412,11 +412,12 @@ with tab_fx:
             s = nat[config.FX_PAIRS[pair]["sid"]].dropna()
             dec = 2 if s.iloc[-1] > 20 else 4
             cols[i].metric(pair, f"{s.iloc[-1]:.{dec}f}", f"{signals.pct_change_over(s, 30):+.1f}% 1 mo",
-                           delta_color="off", help=f"As of {s.index[-1]:%b %d, %Y}")
+                           delta_color="normal",  # green when the pair rose over the month, red when it fell
+                           help=f"As of {s.index[-1]:%b %d, %Y}")
         if have("DTWEXBGS"):
             d = nat["DTWEXBGS"].dropna()
             cols[-1].metric("Broad dollar", f"{d.iloc[-1]:.1f}", f"{signals.pct_change_over(d, 30):+.1f}% 1 mo",
-                            delta_color="off", help=f"Trade-weighted, as of {d.index[-1]:%b %d, %Y}")
+                            delta_color="normal", help=f"Trade-weighted, as of {d.index[-1]:%b %d, %Y}")
 
         # ---- 1) asset approach ----
         st.markdown("#### What's moving the majors (asset approach, ch. 4)")
